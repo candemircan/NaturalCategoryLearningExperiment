@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Deliver the Images!</title>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
+  <script src="https://unpkg.com/jspsych@7.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-browser-check@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-image-keyboard-response@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-external-html@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-instructions@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey-multi-choice@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-preload@1.0.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-fullscreen@1.1.1"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey@0.2.1"></script>
+  <link href="https://unpkg.com/jspsych@7.0.0/css/jspsych.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body></body>
+<script>
+
+  // get the current condition file number from temp.txt
+  const fileRequest = new XMLHttpRequest();
+  fileRequest.open("GET", "temp.txt", false);
+  fileRequest.send(null);
+  const parNo = parseInt(fileRequest.responseText);
+  console.log("getting condition file no", parNo);
+  const nextParNo = parNo + 1;
+  fileRequest.abort();
+
+  // update condition file so next participant gets a new condition file
+  $.post('./update_temp.php', {
+    nextPar: nextParNo
+  });
+
+
+  // get the actual condition file as a json array
+  const condFileRequest = new XMLHttpRequest();
+  condFileRequest.open("GET", "condition_files/" + parNo + ".json", false);
+  condFileRequest.send(null);
+  const condFile = JSON.parse(condFileRequest.responseText);
+  condFileRequest.abort();
+
+  function saveData(data, dataType, subjectId) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'write_data.php');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify({ filedata: data, datatype: dataType, subjectid: subjectId }));
+  }
+
+  const jsPsych = initJsPsych(
+    {
+      show_progress_bar: true,
+      auto_update_progress_bar: false,
+    },
+  );
+  var subjectId = jsPsych.data.getURLVariable('PROLIFIC_PID');
+
+  if (typeof subjectId === 'undefined') {
+    subjectId = 'non_prolific_' + (Math.random() * 10000).toFixed();
+    alert("Because you are not joining from Prolific, you will not be receiving any monetary compensation for participating.");
+  }
+  console.log('ID is ' + subjectId);
+
+
+  const nTrails = condFile.length;
+  const basePay = 1.5;
+  const bonusPerCorrect = .05;
+  jsPsych.data.addProperties(
+    {
+      'current_pay': basePay,
+      'subject_id': subjectId,
+      'cond_file_no': parNo,
+
+    }
+    );
+  var timeline = []; // all our events go into this array
+
+
+  var browserCheck = {
+    type: jsPsychBrowserCheck,
+    inclusion_function: (data) => {
+      return ['chrome', 'firefox'].includes(data.browser) && data.mobile === false;
+    },
+  };
+  timeline.push(browserCheck);
+
+
+
+  ////// PRELOAD IMAGES //////
+  // so it does not lag 
+  var preload = {
+    type: jsPsychPreload,
+    images: condFile.map(x => x.stimulus)
+  }
+  timeline.push(preload)
+
+  ////// WELCOME PAGE //////
+  // general information
+  // data handling policy & consent
+  var welcome = {
+    type: jsPsychExternalHtml,
+    url: "welcome.html",
+    cont_btn: "consent",
+    on_start: function () {
+      // set progress bar to 0 at the start of experiment
+      jsPsych.setProgressBar(0);
+    }
+  };
+  timeline.push(welcome);
+
+  ////// TASK INSTRUCTIONS PAGE //////
+  // multi page instructions on how to
+  // shop for our friends Julty and Folty
+  var instructions = {
+    type: jsPsychInstructions,
+    pages: [
+      'Hello! Thanks a lot for helping us today! Your task is to deliver some images to our friends <b>Julty</b> and <b>Folty</b>' +
+      '<br>' +
+      '<figure style="float:left"><img src="imgs/julty.png" alt="Image of Julty" height="300px"/><figcaption>Hello! I am <b>Julty</b>.</figcaption></figure>' +
+      '&nbsp &nbsp &nbsp &nbsp' +
+      '<figure style="float:right"><img src="imgs/folty.png" alt="Image of Folty" height="300px"/><figcaption>Hello! I am <b>Folty</b>.</figcaption></figure>',
+
+      'Unfortunately, it has been a while since we hung out with Julty and Folty, and we cannot remember what they like and do not like.' +
+      '<br>' +
+      'However, we remember that whatever Julty likes, Folty does not like; and whatever Folty likes, Julty does not like.',
+
+      'We will present you with 120 images, one by one. After receiving each image you need to deliver it to either Julty or to Folty.' +
+      '<br>' +
+      'You can give the image to <b>Julty</b> using the button <b>J</b>, and to <b>Folty</b> using the button <b>F</b>' +
+      '<br>' +
+      'Once you deliver an image, they tell us whether they enjoyed their image or not. We will pass on the feedback to you.' +
+      '<br>' +
+      'Hopefully, you can figure out over time which images are more suited for whom.',
+
+      'Of course, we will compensate you for your time and effort.' +
+      '<br>' +
+      'As a base rate, we will pay you 2&pound;, and for each image you deliver correctly, you will receive an extra 4p',
+
+      'Feel free to go through the instructions as many times as you need to.' +
+      '<br>' +
+      'You also do not need to rush through the task. What matters to us (and of course to Folty and Julty) is how much they enjoy their images, not how quickly they receive them.' +
+      '<br>' +
+      'Once you are ready, you can hit the <code>next</code> button below, which will take you to a comprehension questionnaire to make sure that the task is clear to you.' +
+      '<br>' +
+      'If you get all the questions right, the experiment will start. If not, you will be asked to answer the questions again. '
+    ],
+    show_clickable_nav: true
+  }
+
+
+  ////// COMPREHENSION CHECK PAGE //////
+  // a few questions to make sure participants understand the task
+  var comprehension = {
+    type: jsPsychSurveyMultiChoice,
+    questions: [
+      {
+        prompt: "What is your task?",
+        name: 'task',
+        options: [
+          'To deliver as many images as possible.',
+          'To deliver images as fast as possible.',
+          'To deliver images to the correct recipients.',
+          'I do not know.'
+        ],
+        required: true
+      },
+      {
+        prompt: "How do you deliver the images?",
+        name: 'how',
+        options: [
+          'Using the <b>J</b> button to deliver an image to <b>Julty</b>, and using the <b>F</b> button to deliver an image to <b>Folty</b>.',
+          'Using the <b>F</b> button to deliver an image to <b>Julty</b>, and using the <b>J</b> button to deliver an image to <b>Folty</b>.',
+          'By dragging the images to one of the corners.',
+          'I do not know.'
+        ],
+        required: true
+      },
+      {
+        prompt: "Which of the following is true?",
+        name: 'which',
+        options: [
+          'Julty and Folty like exactly the same images.',
+          'Julty and Folty like completely different images and there is no overlap in what they like.',
+          'There is some overlap in the images that Julty and Folty like.'
+        ],
+        required: true
+      }
+    ],
+    on_finish: function (data) {
+      if (
+        (data.response.task == 'To deliver images to the correct recipients.') &&
+        (data.response.how == 'Using the <b>J</b> button to deliver an image to <b>Julty</b>, and using the <b>F</b> button to deliver an image to <b>Folty</b>.') &&
+        (data.response.which == 'Julty and Folty like completely different images and there is no overlap in what they like.')) {
+        data.correct = true
+      }
+      else {
+        data.correct = false
+      }
+    }
+  };
+
+  ////// COMPREHENSION EVALUATION //////
+  // check if all the comprehension questions have been answered correctly
+  // start the experiment if so, otherwise do the questionnaire again
+  var comprehensionEvaluation = {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: function () {
+      var questionnaireCorrect = jsPsych.data.getLastTrialData().values()[0].correct;
+      if (questionnaireCorrect) {
+        return '<b>Congratulations!</b> You answered all the questions correctly, and you may start the experiment by pressing the button below.'
+      }
+      else {
+        return 'Unfortunately, you did not answer all the questions correctly. Please press the button below to go back to the questions page.'
+      }
+    },
+    choices: ['Next'],
+  };
+
+  ////// COMPREHENSION LOOP //////
+  // a loop including the comprehension questions and the check that does not end until all the questions are answered correctly
+  var comprehensionLoop = {
+    timeline: [instructions, comprehension, comprehensionEvaluation],
+    loop_function: function (data) {
+      if (data.values()[1].correct == true) {
+        document.getElementsByTagName('span')[0].textContent = 'Current Payment: 1.5\u00A3';
+        return false;
+      } else {
+        return true;
+      }
+    }
+  };
+
+  timeline.push(comprehensionLoop);
+
+  ////// ENTER FULL SCREEN //////
+  // make the actual experiment in full screen mode
+  var enterFullScreen = {
+    type: jsPsychFullscreen,
+    fullscreen_mode: true
+  };
+  timeline.push(enterFullScreen);
+
+
+  ////// IMAGE PRESENTATION //////
+  // get image dir from the json file an present it to the participant
+  // allow keys J and L
+  var presentImage = {
+    type: jsPsychImageKeyboardResponse,
+    stimulus: jsPsych.timelineVariable('stimulus'),
+    choices: ['f', 'j'],
+    stimulus_height: 400,
+    data: {
+      trueCategory: jsPsych.timelineVariable('true_category'),
+      trueKeyboard: jsPsych.timelineVariable('true_keyboard') 
+    },
+    on_finish: function (data) {
+      data.correct = data.trueKeyboard === data.response
+      if (data.correct) {
+        jsPsych.data.dataProperties.current_pay += bonusPerCorrect;
+      }
+      document.getElementsByTagName('span')[0].textContent = 'Current Payment:' + jsPsych.data.dataProperties.current_pay.toFixed(2) + '\u00A3';
+    }
+  };
+
+  ////// FEEDBACK //////
+
+  var feedback = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: function () {
+      var lastTrial = jsPsych.data.getLastTrialData().values()[0];
+      if ((lastTrial.trueCategory == "Julty") && (lastTrial.response == 'j')) {
+        return '<p style="font-size:48px; color:green;">CORRECT</p><br><p>Julty loves the image!</p>'
+      }
+      else if (((lastTrial.trueCategory == "Folty") && (lastTrial.response == 'j'))) {
+        return '<p style="font-size:48px; color:red;">WRONG</p><br><p>This images was meant for Folty!</p>'
+      }
+      else if (((lastTrial.trueCategory == "Folty") && (lastTrial.response == 'f'))) {
+        return '<p style="font-size:48px; color:green;">CORRECT</p><br><p>Folty loves the image!</p>'
+      }
+      else if (((lastTrial.trueCategory == "Julty") && (lastTrial.response == 'f'))) {
+        return '<p style="font-size:48px; color:red;">WRONG</p><br><p>This image was meant for Julty!</p>'
+      }
+    },
+    choices: "NO_KEYS",
+    trial_duration: 2000,
+    on_finish: function () {
+      // at the end of each trial, update the progress bar
+      // based on the current value and the proportion to update for each trial
+      var curProgressBar = jsPsych.getProgressBarCompleted();
+      jsPsych.setProgressBar(curProgressBar + (1 / nTrails));
+    }
+  }
+
+
+  ////// TRIAL TIMELINE //////
+  // combining image presentation and feedback in one loop
+  var trialTimeLine = {
+    timeline: [presentImage, feedback],
+    timeline_variables: condFile,
+  }
+
+  timeline.push(trialTimeLine)
+
+
+  ////// EXIT FULL SCREEN //////
+  var exitFullScreen = {
+    type: jsPsychFullscreen,
+    fullscreen_mode: false
+  };
+  timeline.push(exitFullScreen);
+
+  ////// QUESTIONNAIRE //////
+  // record gender, age, and task info //
+  var questionnaire = {
+    type: jsPsychSurvey,
+    on_start: function () {
+      document.getElementsByTagName('span')[0].textContent = 'Final Payment:' + jsPsych.data.dataProperties.current_pay.toFixed(2) + '\u00A3';
+    },
+    pages: [
+      [
+        {
+          type: 'html',
+          prompt: 'Lastly, please answer the following questions.',
+        },
+        {
+          type: 'multi-choice',
+          prompt: "What is your gender?",
+          options: ['Female', 'Male', 'Other'],
+          name: 'gender',
+          required: true,
+        },
+        {
+          type: 'text',
+          prompt: "How old are you?",
+          name: 'age',
+          textbox_columns: 5,
+          required: true,
+        },
+        {
+          type: 'text',
+          prompt: "Can you please tell us a little bit about how you did our experiment??",
+          name: 'how_experiment',
+          required: true,
+        },
+        {
+          type: 'multi-choice',
+          prompt: "Do you think we should include your data in our analysis? Please note that this will not affect your payment in any way.",
+          options: ['Yes', 'No'],
+          name: 'include',
+          required: true
+        },
+      ],
+    ],
+    title: 'Well done!',
+    button_label_finish: 'Continue',
+    show_question_numbers: 'onPage',
+    on_finish: function () {
+      saveData(jsPsych.data.get().csv(), 'task', subjectId);
+      saveData(jsPsych.data.getInteractionData().csv(), 'logs', subjectId);
+    }
+  };
+  timeline.push(questionnaire);
+
+  var goodbye = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `<p>Thanks for participating!</p>
+    <p><a href="https://app.prolific.co/submissions/complete?cc=C4330MIO">Click here to return to Prolific and complete the study</a>.</p>
+    <p>After clicking on the link, you may safely close the window.</p>`,
+    choices: "NO_KEYS"
+  }
+  timeline.push(goodbye)
+
+
+  jsPsych.run(timeline);
+</script>
+
+</html>

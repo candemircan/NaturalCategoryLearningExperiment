@@ -1,0 +1,5 @@
+stimuli/*
+!stimuli/.gitkeep
+data/*
+!data/.gitkeep
+data_protection.pdf
